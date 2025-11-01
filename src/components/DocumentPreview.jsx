@@ -720,9 +720,16 @@ const DocumentPreview = () => {
     if (!uploadedFile) return;
     
     try {
+      console.log('[DocumentPreview] Download initiated...');
+      console.log('[DocumentPreview] Filled values:', filledValues);
+      console.log('[DocumentPreview] Placeholders:', placeholders);
+      console.log('[DocumentPreview] PlaceholderFormatMap:', placeholderFormatMap);
+      
       await downloadDocument(uploadedFile, filledValues, placeholderFormatMap, placeholders, 'completed-document.docx');
+      
+      console.log('[DocumentPreview] Download completed successfully');
     } catch (err) {
-      console.error('Error downloading document:', err);
+      console.error('[DocumentPreview] Error downloading document:', err);
       alert('Failed to download document. Please try again.');
     }
   };

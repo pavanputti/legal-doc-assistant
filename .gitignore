@@ -27,22 +27,5 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-
-# Sample documents (large files)
-sample-documents/
-sample/
-public/*.docx
-public/*.pdf
-
-# Firebase cache
-.firebase/
-firebase-debug.log
-firestore-debug.log
-
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# Explicitly ignore .env (safety measure)
+**/.env

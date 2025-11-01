@@ -41,13 +41,14 @@ cd legal-doc-assistant
 npm install
 ```
 
-3. Set up Firebase (optional):
-   - Create a Firebase project at https://console.firebase.google.com
-   - Get your Firebase configuration
-   - Create a `.env` file in the root directory:
-
-```env
-VITE_FIREBASE_API_KEY=your-api-key
+3. Set up environment variables:
+   - Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   - Edit `.env` and fill in your Firebase configuration:
+   ```env
+   VITE_FIREBASE_API_KEY=your-api-key
 VITE_FIREBASE_AUTH_DOMAIN=your-auth-domain
 VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-storage-bucket
@@ -56,9 +57,12 @@ VITE_FIREBASE_APP_ID=your-app-id
 VITE_HF_TOKEN=your-huggingface-token
 ```
 
-**Note:** 
-- The app will work without Firebase configuration - it will use local file handling in that case
-- AI features work without a Hugging Face token (uses smart templates), but adding a token enables advanced AI inference
+**IMPORTANT SECURITY NOTE:** 
+- ⚠️ **Never commit your `.env` file to version control!** It contains sensitive API keys.
+- The `.env` file is already in `.gitignore` to prevent accidental commits.
+- If you accidentally committed API keys, **immediately regenerate them** in the Google Cloud Console.
+- The app will work without Firebase configuration - it will use local file handling in that case.
+- AI features work without a Hugging Face token (uses smart templates), but adding a token enables advanced AI inference.
 - Get a free Hugging Face token at: https://huggingface.co/settings/tokens
 
 ### Running the Development Server

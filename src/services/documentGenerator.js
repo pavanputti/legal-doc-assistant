@@ -47,55 +47,15 @@ export const generateFilledDocument = async (originalFile, filledValues, placeho
     
     console.log('[DOCUMENT_GENERATOR] Original XML length:', docXml.length);
     
-    // Debug: Check if XML contains expected placeholders
-    const sampleXml = docXml.substring(0, Math.min(2000, docXml.length));
-    console.log('[DOCUMENT_GENERATOR] Sample XML (first 2000 chars):', sampleXml);
+    // Replace placeholders in the XML
+    // First, we need to handle placeholders that might be split across XML nodes
+    // DOCX files store text in <w:t> tags, and placeholders might be split
+    // Strategy: First join all text content, replace, then reconstruct XML structure
     
-    // Check for common placeholder patterns in XML
-    const hasBracketPlaceholders = /\[[^\]]+\]/.test(docXml);
-    const hasBlankPlaceholders = /\[[_\-]{3,}\]/.test(docXml);
-    console.log('[DOCUMENT_GENERATOR] XML contains bracket placeholders:', hasBracketPlaceholders);
-    console.log('[DOCUMENT_GENERATOR] XML contains blank placeholders:', hasBlankPlaceholders);
-    
-    // DOCX XML structure: text is in <w:t> tags, placeholders might be split
-    // Example: [COMPANY] might appear as: <w:t>[COM</w:t><w:t>PANY]</w:t>
-    // Strategy: Replace placeholders by temporarily removing XML tags, then restore structure
-    
-    // First, create a normalized version where we temporarily mark text nodes
-    // Then do replacements, then restore the XML structure
     let filledXml = docXml;
     
-    // Helper function to replace placeholders even if split across XML tags
-    const replacePlaceholderInXML = (xml, placeholder, replacement) => {
-      // Create a pattern that matches the placeholder even if split across <w:t> tags
-      // We'll match: [placeholder] or [PLACEHOLDER] or any variation
-      // The pattern should handle: <w:t>[</w:t><w:t>placeholder</w:t><w:t>]</w:t>
-      
-      // For now, try simple replacement first (most placeholders are not split)
-      const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const simpleRegex = new RegExp(escapedPlaceholder, 'gi');
-      
-      // Try simple replacement
-      if (simpleRegex.test(xml)) {
-        return xml.replace(simpleRegex, replacement);
-      }
-      
-      // If simple replacement doesn't work, try pattern that handles split tags
-      // Pattern: placeholder can be split with optional XML tags between characters
-      const flexiblePattern = escapedPlaceholder.split('').join('(?:</?w:t[^>]*>)?');
-      const flexibleRegex = new RegExp(flexiblePattern, 'gi');
-      
-      if (flexibleRegex.test(xml)) {
-        // For split placeholders, we need to reconstruct the XML properly
-        // This is complex, so for now we'll use a simpler approach
-        return xml.replace(flexibleRegex, () => {
-          // Insert replacement inside <w:t> tags
-          return `<w:t>${replacement}</w:t>`;
-        });
-      }
-      
-      return xml;
-    };
+    // For DOCX XML, we need to handle text that might be in <w:t> tags
+    // Let's extract all text content first, replace placeholders, then put it back
     
     // First, handle blank placeholders separately (process in reverse order)
     const blankPlaceholders = Object.entries(filledValues).filter(([key]) => /^blank_\d+$/.test(key));
@@ -133,22 +93,13 @@ export const generateFilledDocument = async (originalFile, filledValues, placeho
       blankPattern.lastIndex = 0;
       const allBlankMatches = [];
       
-      // Collect all blank placeholders in order (skip already replaced ones)
+      // Collect all blank placeholders in order
       while ((match = blankPattern.exec(filledXml)) !== null) {
-        // Check if this match hasn't been replaced yet
-        const checkString = filledXml.substring(
-          Math.max(0, match.index - 50),
-          Math.min(filledXml.length, match.index + match[0].length + 50)
-        );
-        if (!checkString.includes('<!--REPLACED-->')) {
-          allBlankMatches.push({
-            match: match[0],
-            index: match.index
-          });
-        }
+        allBlankMatches.push({
+          match: match[0],
+          index: match.index
+        });
       }
-      
-      console.log(`[DOCUMENT_GENERATOR] Blank placeholder "${normalizedKey}": found ${allBlankMatches.length} unfilled blanks, occurrenceIndex=${occurrenceIndex}`);
       
       // Replace only the specific blank at the correct occurrence index
       if (allBlankMatches[occurrenceIndex]) {
@@ -162,12 +113,7 @@ export const generateFilledDocument = async (originalFile, filledValues, placeho
         const checkBefore = filledXml.substring(Math.max(0, targetMatch.index - 50), targetMatch.index);
         if (!checkBefore.includes('<!--REPLACED-->')) {
           filledXml = beforeMatch + value + '<!--REPLACED-->' + afterMatch;
-          console.log(`[DOCUMENT_GENERATOR] ✓ Replaced blank placeholder "${normalizedKey}" at index ${targetMatch.index} with "${value}"`);
-        } else {
-          console.log(`[DOCUMENT_GENERATOR] ⚠ Blank placeholder "${normalizedKey}" at index ${targetMatch.index} already replaced`);
         }
-      } else {
-        console.warn(`[DOCUMENT_GENERATOR] ⚠ Could not find blank placeholder "${normalizedKey}" at occurrence index ${occurrenceIndex} (only ${allBlankMatches.length} blanks found)`);
       }
     });
     
@@ -198,67 +144,38 @@ export const generateFilledDocument = async (originalFile, filledValues, placeho
         if (originalFormats.length > 0) {
           console.log(`[DOCUMENT_GENERATOR] Replacing "${normalizedKey}" with original formats:`, originalFormats);
           originalFormats.forEach(originalFormat => {
-            // Escape special regex characters
-            const escapedFormat = originalFormat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Escape special regex characters but preserve brackets for matching
+            // DOCX XML might split placeholders, so we need a pattern that can match across tags
+            let pattern = originalFormat;
             
-            // Try multiple strategies for replacement
-            let replaced = false;
+            // For patterns like [COMPANY], create a regex that can match even if split
+            // Example: [COMPANY] should match [COM</w:t></w:r></w:p>...<w:p><w:r><w:t>PANY]
+            // But for simplicity, let's try direct matching first
+            const escapedFormat = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedFormat, 'gi');
             
-            // Strategy 1: Direct replacement (most common case)
-            const directRegex = new RegExp(escapedFormat, 'gi');
-            const matchesBefore = (filledXml.match(directRegex) || []).length;
+            // Count matches before replacement
+            const matchesBefore = (filledXml.match(regex) || []).length;
+            
+            // Replace all occurrences
+            filledXml = filledXml.replace(regex, value);
+            
+            // Count matches after replacement
+            const matchesAfter = (filledXml.match(regex) || []).length;
+            
             if (matchesBefore > 0) {
-              filledXml = filledXml.replace(directRegex, value);
-              console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" ${matchesBefore} time(s) with "${value}" (direct match)`);
-              replaced = true;
-            }
-            
-            // Strategy 2: If direct match failed, try pattern that handles whitespace/XML tags
-            if (!replaced) {
-              // Pattern that allows optional whitespace or XML tags between characters
-              // Example: [COMPANY] might be [COMPANY] or [ COMPANY ] or split across tags
-              const flexiblePattern = escapedFormat.replace(/\[/g, '\\[\\s]*').replace(/\]/g, '[\\s]*\\]');
-              const flexibleRegex = new RegExp(flexiblePattern, 'gi');
-              const flexMatchesBefore = (filledXml.match(flexibleRegex) || []).length;
+              console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" ${matchesBefore} time(s) with "${value}"`);
+            } else {
+              // Try alternative pattern without escaping brackets (might be split)
+              const altPattern = pattern.replace(/\[/g, '\\[\\s]*').replace(/\]/g, '[\\s]*\\]');
+              const altRegex = new RegExp(altPattern, 'gi');
+              const altMatchesBefore = (filledXml.match(altRegex) || []).length;
               
-              if (flexMatchesBefore > 0) {
-                filledXml = filledXml.replace(flexibleRegex, value);
-                console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" ${flexMatchesBefore} time(s) using flexible pattern`);
-                replaced = true;
-              }
-            }
-            
-            // Strategy 3: Extract placeholder name and try matching just the name part
-            if (!replaced) {
-              const placeholderName = originalFormat.replace(/[[\]{}]/g, '').trim();
-              const nameEscaped = placeholderName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              
-              // Try to find the placeholder name in the XML (might be split)
-              // Look for pattern: [name] or {name} or {{name}}
-              const namePatterns = [
-                new RegExp(`\\[\\s*${nameEscaped}\\s*\\]`, 'gi'),
-                new RegExp(`\\{\\{\\s*${nameEscaped}\\s*\\}\\}`, 'gi'),
-                new RegExp(`\\{\\s*${nameEscaped}\\s*\\}`, 'gi'),
-              ];
-              
-              for (const nameRegex of namePatterns) {
-                const nameMatches = (filledXml.match(nameRegex) || []).length;
-                if (nameMatches > 0) {
-                  filledXml = filledXml.replace(nameRegex, value);
-                  console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" ${nameMatches} time(s) by matching name "${placeholderName}"`);
-                  replaced = true;
-                  break;
-                }
-              }
-            }
-            
-            if (!replaced) {
-              console.warn(`[DOCUMENT_GENERATOR] ⚠ Could not find "${originalFormat}" in XML - placeholder might be split or formatted differently`);
-              // Last resort: try replacePlaceholderInXML helper
-              const beforeReplace = filledXml;
-              filledXml = replacePlaceholderInXML(filledXml, originalFormat, value);
-              if (filledXml !== beforeReplace) {
-                console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" using XML-aware replacement`);
+              if (altMatchesBefore > 0) {
+                filledXml = filledXml.replace(altRegex, value);
+                console.log(`[DOCUMENT_GENERATOR] ✓ Replaced "${originalFormat}" ${altMatchesBefore} time(s) using flexible pattern`);
+              } else {
+                console.warn(`[DOCUMENT_GENERATOR] ⚠ Could not find "${originalFormat}" in XML`);
               }
             }
           });
