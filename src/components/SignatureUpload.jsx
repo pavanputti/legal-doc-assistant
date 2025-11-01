@@ -88,6 +88,8 @@ const SignatureUpload = ({ onSignatureUpload, placeholder }) => {
       </div>
 
       <input
+        id="signature-image-upload-input"
+        name="signature-image-upload"
         ref={fileInputRef}
         type="file"
         accept="image/*"
@@ -98,6 +100,8 @@ const SignatureUpload = ({ onSignatureUpload, placeholder }) => {
       {signatureMethod === 'text' && (
         <div className="signature-text-input">
           <input
+            id="signature-text-input"
+            name="signature-text"
             type="text"
             value={textSignature}
             onChange={(e) => setTextSignature(e.target.value)}

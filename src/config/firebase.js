@@ -29,24 +29,48 @@ const missingEnvVars = requiredEnvVars.filter(
 );
 
 if (missingEnvVars.length > 0) {
-  console.error(
-    '❌ Missing required Firebase environment variables:',
+  console.warn(
+    '⚠️ Missing Firebase environment variables:',
     missingEnvVars.join(', ')
   );
-  console.error(
-    'Please create a .env file with the required Firebase configuration. See .env.example for reference.'
+  console.warn(
+    '📝 Create a .env file with your Firebase configuration (see .env.example for reference).'
+  );
+  console.warn(
+    'ℹ️ The app will work without Firebase (using local file handling), but file uploads will be limited.'
   );
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase only if all required variables are present
+let app = null;
+try {
+  // Check if at least projectId is present (minimal requirement)
+  if (firebaseConfig.projectId) {
+    app = initializeApp(firebaseConfig);
+    console.log('✅ Firebase initialized successfully');
+  } else {
+    console.warn('⚠️ Firebase not initialized - missing projectId. File uploads will use local storage.');
+  }
+} catch (error) {
+  console.warn('⚠️ Firebase initialization failed:', error.message);
+  console.warn('ℹ️ The app will continue without Firebase features.');
+}
 
 // Initialize Cloud Storage and get a reference to the service
-export const storage = getStorage(app);
+// Only initialize if app is available
+let storageInstance = null;
+if (app) {
+  try {
+    storageInstance = getStorage(app);
+  } catch (error) {
+    console.warn('Failed to initialize Firebase Storage:', error);
+  }
+}
+export const storage = storageInstance;
 
-// Initialize Analytics (only in browser environment)
+// Initialize Analytics (only in browser environment and if app is available)
 let analytics = null;
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && app) {
   try {
     analytics = getAnalytics(app);
   } catch (error) {

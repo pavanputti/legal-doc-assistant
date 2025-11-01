@@ -347,6 +347,8 @@ const ChatInterface = () => {
           ) : (
             <form onSubmit={handleSubmit} className="chat-input-form">
               <input
+                id="chat-input-field"
+                name="chat-input"
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}

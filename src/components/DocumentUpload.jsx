@@ -78,18 +78,23 @@ const DocumentUpload = () => {
       
       // Upload to Firebase Storage (optional, non-blocking)
       // Do this in the background without blocking the UI
-      (async () => {
-        try {
-          console.log('Attempting Firebase upload...');
-          const storageRef = ref(storage, `documents/${Date.now()}-${file.name}`);
-          await uploadBytes(storageRef, file);
-          const url = await getDownloadURL(storageRef);
-          console.log('File uploaded to Firebase:', url);
-        } catch (firebaseError) {
-          console.warn('Firebase upload failed (using local file only):', firebaseError);
-          // Don't show error to user - Firebase upload is optional
-        }
-      })();
+      // Only upload if Firebase storage is configured
+      if (storage) {
+        (async () => {
+          try {
+            console.log('Attempting Firebase upload...');
+            const storageRef = ref(storage, `documents/${Date.now()}-${file.name}`);
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            console.log('File uploaded to Firebase:', url);
+          } catch (firebaseError) {
+            console.warn('Firebase upload failed (using local file only):', firebaseError);
+            // Don't show error to user - Firebase upload is optional
+          }
+        })();
+      } else {
+        console.log('Firebase storage not configured - using local file only');
+      }
       
     } catch (error) {
       console.error('Error processing document:', error);
@@ -138,6 +143,8 @@ const DocumentUpload = () => {
         style={{ cursor: isProcessing ? 'wait' : 'pointer' }}
       >
         <input
+          id="document-upload-input"
+          name="document-upload"
           ref={fileInputRef}
           type="file"
           accept=".docx"

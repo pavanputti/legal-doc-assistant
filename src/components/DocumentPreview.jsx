@@ -535,7 +535,8 @@ const DocumentPreview = () => {
         }
         
         // Now map current unfilled blanks to placeholder keys using the SAME logic as replacement
-        // Build list of unfilled blank placeholder keys in document order
+        // IMPORTANT: This must match the download logic exactly
+        // Build list of unfilled blank placeholder keys in document order (same as download)
         const unfilledBlankKeys = [];
         if (placeholders && Array.isArray(placeholders)) {
           for (let j = 0; j < placeholders.length; j++) {
@@ -549,14 +550,37 @@ const DocumentPreview = () => {
           }
         }
         
-        // Map current HTML blanks to placeholder keys by order
-        // The nth unfilled blank in HTML = nth unfilled blank placeholder key
+        // CRITICAL FIX: Map current HTML blanks to placeholder keys using the SAME occurrence index logic as download
+        // For each placeholder key, calculate its occurrence index (same as download logic)
+        // Then find the HTML blank at that occurrence index
+        const placeholderKeyToOccurrenceIndex = new Map();
+        // CRITICAL FIX: Calculate occurrence index the SAME way as download
+        // Simply get the index of this blank among ALL blanks in document order
+        const allBlanksInOrder = (placeholders || []).filter(p => /^blank_\d+$/.test(p));
+        
+        unfilledBlankKeys.forEach(placeholderKey => {
+          // Find this placeholder's index among all blanks (same logic as download)
+          const occurrenceIndex = allBlanksInOrder.indexOf(placeholderKey);
+          
+          if (occurrenceIndex !== -1) {
+            placeholderKeyToOccurrenceIndex.set(placeholderKey, occurrenceIndex);
+            console.log(`[BLANK_HIGHLIGHT] Blank "${placeholderKey}" is at occurrence index ${occurrenceIndex} among all blanks:`, allBlanksInOrder);
+          } else {
+            console.warn(`[BLANK_HIGHLIGHT] ⚠️ Blank "${placeholderKey}" not found in all blanks array`);
+          }
+        });
+        
+        // Now map HTML blanks to placeholder keys by occurrence index
+        // The HTML blank at occurrence index N maps to the placeholder key that also has occurrence index N
         const currentBlankToPlaceholderKey = new Map();
         currentBlankMatches.forEach((currentBlank, htmlIndex) => {
-          if (htmlIndex < unfilledBlankKeys.length) {
-            const matchedKey = unfilledBlankKeys[htmlIndex];
-            currentBlankToPlaceholderKey.set(currentBlank, matchedKey);
-            console.log(`[BLANK_HIGHLIGHT] Mapped current HTML blank #${htmlIndex} (at position ${currentBlank.index}) to placeholder key: ${matchedKey}`);
+          // Find the placeholder key that has occurrence index matching this HTML blank's index
+          for (const [placeholderKey, occIndex] of placeholderKeyToOccurrenceIndex.entries()) {
+            if (occIndex === htmlIndex) {
+              currentBlankToPlaceholderKey.set(currentBlank, placeholderKey);
+              console.log(`[BLANK_HIGHLIGHT] Mapped HTML blank #${htmlIndex} (occurrence ${occIndex}) at position ${currentBlank.index} to placeholder key: ${placeholderKey}`);
+              break;
+            }
           }
         });
         

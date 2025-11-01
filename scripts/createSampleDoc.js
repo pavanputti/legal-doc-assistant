@@ -1,210 +1,206 @@
-// Script to create a sample DOCX file with placeholders
-// Run with: node scripts/createSampleDoc.js
-
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
-import { writeFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 
-const doc = new Document({
-  sections: [
-    {
+/**
+ * Create a sample DOCX document with various placeholder types for testing
+ */
+async function createSampleDocument() {
+  const doc = new Document({
+    sections: [{
       properties: {},
       children: [
+        // Title
         new Paragraph({
+          text: "Legal Document Assistant - Sample Document",
+          heading: HeadingLevel.TITLE,
+        }),
+        
+        // Introduction paragraph with placeholder
+        new Paragraph({
+          children: [
+            new TextRun("This is a sample document to test the Legal Document Assistant application. "),
+            new TextRun("Company Name: "),
+            new TextRun({
+              text: "[COMPANY]",
+              highlight: "yellow",
+            }),
+            new TextRun(" is requesting this document."),
+          ],
+        }),
+
+        // Blank line
+        new Paragraph({ text: "" }),
+
+        // Agreement section with multiple placeholders
+        new Paragraph({
+          text: "AGREEMENT DETAILS",
           heading: HeadingLevel.HEADING_1,
-          children: [
-            new TextRun({
-              text: 'SAMPLE LEGAL AGREEMENT',
-              bold: true,
-              size: 32,
-            }),
-          ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("This agreement is entered into on "),
             new TextRun({
-              text: '',
+              text: "[Date of Safe]",
+              highlight: "yellow",
             }),
+            new TextRun(" between the parties listed below."),
           ],
         }),
+
+        new Paragraph({ text: "" }),
+
+        // Financial section with blank placeholder
+        new Paragraph({
+          text: "FINANCIAL TERMS",
+          heading: HeadingLevel.HEADING_1,
+        }),
+
         new Paragraph({
           children: [
+            new TextRun("The investment amount is: $"),
             new TextRun({
-              text: 'This Agreement is entered into on {{date}} between {{company_name}}, a {{company_type}} (the "Company") and {{investor_name}}, a {{investor_type}} (the "Investor").',
+              text: "[________]",
+              highlight: "yellow",
             }),
+            new TextRun(" (the \"Purchase Amount\")"),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("The valuation cap is: $"),
             new TextRun({
-              text: '',
+              text: "[________]",
+              highlight: "yellow",
             }),
+            new TextRun(" (the \"Post-Money Valuation Cap\")"),
           ],
         }),
+
+        new Paragraph({ text: "" }),
+
+        // Company section
         new Paragraph({
+          text: "COMPANY:",
           heading: HeadingLevel.HEADING_2,
+        }),
+
+        new Paragraph({
           children: [
+            new TextRun("Company Name: "),
             new TextRun({
-              text: '1. DEFINITIONS',
-              bold: true,
+              text: "[COMPANY]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("Signatory Name: "),
             new TextRun({
-              text: 'For the purposes of this Agreement, the following terms shall have the meanings set forth below:',
+              text: "[name]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("Title: "),
             new TextRun({
-              text: 'a) "Valuation Cap" means ${valuation_cap_amount};',
+              text: "[title]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("Address: "),
             new TextRun({
-              text: 'b) "Investment Amount" means ${investment_amount};',
+              text: "[Address]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("Email: "),
             new TextRun({
-              text: '',
+              text: "[Email]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
-          heading: HeadingLevel.HEADING_2,
           children: [
+            new TextRun("By: "),
             new TextRun({
-              text: '2. INVESTMENT TERMS',
-              bold: true,
+              text: "[By]",
+              highlight: "yellow",
             }),
           ],
         }),
+
+        new Paragraph({ text: "" }),
+
+        // Additional placeholders
+        new Paragraph({
+          text: "ADDITIONAL INFORMATION",
+          heading: HeadingLevel.HEADING_1,
+        }),
+
         new Paragraph({
           children: [
+            new TextRun("State of Incorporation: "),
             new TextRun({
-              text: 'The Investor agrees to invest {{investment_amount}} in exchange for {{equity_percentage}}% equity in the Company, subject to a valuation cap of {{valuation_cap}}.',
+              text: "[State of Incorporation]",
+              highlight: "yellow",
             }),
           ],
         }),
+
         new Paragraph({
           children: [
+            new TextRun("Governing Law Jurisdiction: "),
             new TextRun({
-              text: '',
+              text: "[Governing Law Jurisdiction]",
+              highlight: "yellow",
             }),
           ],
         }),
+
+        new Paragraph({ text: "" }),
+
+        // Note about placeholders
         new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          children: [
-            new TextRun({
-              text: '3. REPRESENTATIONS AND WARRANTIES',
-              bold: true,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'The Company represents and warrants that it is duly organized and validly existing under the laws of {{jurisdiction}}, with its principal place of business at {{company_address}}.',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '',
-            }),
-          ],
-        }),
-        new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          children: [
-            new TextRun({
-              text: '4. SIGNATURES',
-              bold: true,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'Company:',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '_________________________',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '{{company_name}}',
-              bold: true,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'Investor:',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '_________________________',
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '{{investor_name}}',
-              bold: true,
-            }),
-          ],
+          text: "Note: This document contains various placeholder formats for testing purposes.",
+          italics: true,
         }),
       ],
-    },
-  ],
-});
+    }],
+  });
 
-// Generate the document
-Packer.toBuffer(doc).then((buffer) => {
-  writeFileSync('public/sample-document.docx', buffer);
-  console.log('Sample document created at public/sample-document.docx');
-});
+  // Generate the DOCX file
+  const blob = await Packer.toBlob(doc);
+  
+  // Convert blob to buffer for Node.js
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  
+  // Save to public directory
+  const outputPath = './public/sample-document-comprehensive.docx';
+  await writeFile(outputPath, buffer);
+  
+  console.log(`✅ Sample document created successfully: ${outputPath}`);
+  console.log(`📄 This document contains:`);
+  console.log(`   - Regular placeholders: [COMPANY], [name], [title], etc.`);
+  console.log(`   - Blank placeholders: [________] for Purchase Amount and Valuation Cap`);
+  console.log(`   - Various sections with different placeholder types`);
+}
 
+// Run the script
+createSampleDocument().catch(console.error);
