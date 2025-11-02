@@ -174,74 +174,100 @@ const DocumentPreview = () => {
                 }
               }
 
-              // For blank placeholders, we need special handling to ensure each one is replaced uniquely
-              // Each blank placeholder should only replace its specific occurrence, not all similar patterns
+              // REWRITTEN: Unified handling for blank placeholders ($[________])
+              // This ensures consistent mapping between highlighting and replacement
               if (/^blank_\d+$/.test(normalizedKey)) {
-                const blankPattern = /\[[_-]{3,}\]/g;
-                let match;
-                blankPattern.lastIndex = 0;
-                
-                // Find which occurrence of [________] in the HTML corresponds to this placeholder key
-                // Count unfilled blank placeholders that come before this one in the placeholders array
-                // IMPORTANT: Count by position in document (placeholders array order), not by blank number
-                let occurrenceIndex = 0;
-                for (let j = 0; j < placeholders.length; j++) {
-                  const key = placeholders[j];
-                  if (key === normalizedKey) break; // Stop when we reach this placeholder
-                  if (/^blank_\d+$/.test(key)) {
-                    // This is a blank placeholder that appears before our current placeholder in the document
-                    // Check if this previous blank is still unfilled (exists in HTML)
-                    const isOtherFilled = filledValues[key] && filledValues[key].trim() !== '';
-                    if (!isOtherFilled) {
-                      occurrenceIndex++; // Count unfilled blanks by document order, not by blank number
-                    }
-                  }
-                }
-                
-                // Now find the blank placeholder in HTML at this occurrence index
-                const allBlankMatches = [];
-                blankPattern.lastIndex = 0;
-                while ((match = blankPattern.exec(html)) !== null) {
-                  // Check if this match has already been replaced
-                  const checkString = html.substring(
-                    Math.max(0, match.index - 50), 
-                    Math.min(html.length, match.index + match[0].length + 50)
-                  );
-                  if (!checkString.includes('background-color: #d4edda') && 
-                      !checkString.includes('background-color: #fff3cd') &&
-                      !checkString.includes('background-color: #2196f3')) {
-                    allBlankMatches.push({
-                      match: match[0],
-                      index: match.index,
-                      fullMatch: match[0]
-                    });
-                  }
-                }
-                
-                // Only replace the specific blank placeholder at the correct occurrence index
-                if (allBlankMatches[occurrenceIndex]) {
-                  const targetMatch = allBlankMatches[occurrenceIndex];
-                  // Check if this specific match hasn't been replaced yet
-                  const htmlBeforeMatch = html.substring(0, targetMatch.index);
-                  const htmlAfterMatch = html.substring(targetMatch.index + targetMatch.match.length);
-                  const checkString = html.substring(
-                    Math.max(0, targetMatch.index - 50), 
-                    Math.min(html.length, targetMatch.index + targetMatch.match.length + 50)
-                  );
+                // Helper: Find all unfilled blank placeholders in current HTML
+                const findUnfilledBlanks = (htmlContent) => {
+                  const blankPattern = /\[[_-]{3,}\]/g;
+                  const blanks = [];
+                  let match;
+                  blankPattern.lastIndex = 0;
                   
-                  if (!checkString.includes('background-color: #d4edda') && !checkString.includes('background-color: #fff3cd')) {
-                    // Replace only this specific occurrence
-                    let replacement;
-                    if (value.startsWith('data:image')) {
-                      replacement = `<img src="${value}" alt="Signature" style="max-width: 200px; max-height: 60px; border: 1px solid #c3e6cb; border-radius: 3px; vertical-align: middle;" />`;
-                    } else {
-                      // Replace the [________] part only - don't add a $ if one already exists before it
-                      // The dollar sign before [________] will remain in place automatically
-                      replacement = `<span style="background-color: #d4edda; padding: 2px 6px; border-radius: 3px; font-weight: 500; color: #155724; border: 1px solid #c3e6cb;">${value}</span>`;
-                    }
+                  while ((match = blankPattern.exec(htmlContent)) !== null) {
+                    // CRITICAL: Only check for GREEN highlight (filled with value)
+                    // Yellow and blue highlights should NOT prevent replacement
+                    const checkArea = htmlContent.substring(
+                      Math.max(0, match.index - 50),
+                      Math.min(htmlContent.length, match.index + match[0].length + 50)
+                    );
+                    // Only green (#d4edda) means actually filled with a value
+                    // Yellow (#fff3cd) and blue (#2196f3) are just highlights that can be replaced
+                    const isFilled = checkArea.includes('background-color: #d4edda');
                     
-                    html = htmlBeforeMatch + replacement + htmlAfterMatch;
+                    if (!isFilled) {
+                      // Check for dollar sign before this blank
+                      let dollarIndex = -1;
+                      for (let i = match.index - 1; i >= Math.max(0, match.index - 20); i--) {
+                        if (htmlContent[i] === '$') {
+                          const dollarCheck = htmlContent.substring(Math.max(0, i - 50), i + 5);
+                          if (!dollarCheck.includes('background-color')) {
+                            dollarIndex = i;
+                            break;
+                          }
+                        }
+                      }
+                      
+                      blanks.push({
+                        match: match[0],
+                        index: match.index,
+                        dollarIndex: dollarIndex,
+                        hasDollar: dollarIndex !== -1
+                      });
+                    }
                   }
+                  
+                  return blanks.sort((a, b) => a.index - b.index);
+                };
+                
+                // Get all blank placeholders in document order
+                const allBlanksInOrder = (placeholders || []).filter(p => /^blank_\d+$/.test(p));
+                const placeholderIndex = allBlanksInOrder.indexOf(normalizedKey);
+                
+                if (placeholderIndex === -1) {
+                  console.warn(`[REPLACEMENT] ⚠️ Placeholder "${normalizedKey}" not found in blanks array`);
+                  return;
+                }
+                
+                // Find unfilled blanks in current HTML
+                const unfilledBlanks = findUnfilledBlanks(html);
+                
+                // Count how many blanks BEFORE this one are still unfilled
+                let unfilledIndex = 0;
+                for (let i = 0; i < placeholderIndex; i++) {
+                  const prevKey = allBlanksInOrder[i];
+                  const prevValue = filledValues[prevKey];
+                  if (!prevValue || prevValue.trim() === '') {
+                    unfilledIndex++;
+                  }
+                }
+                
+                // Replace the blank at the calculated index
+                if (unfilledIndex >= 0 && unfilledIndex < unfilledBlanks.length) {
+                  const targetBlank = unfilledBlanks[unfilledIndex];
+                  
+                  // Create replacement with value
+                  let replacement;
+                  if (value.startsWith('data:image')) {
+                    replacement = `<img src="${value}" alt="Signature" style="max-width: 200px; max-height: 60px; border: 1px solid #c3e6cb; border-radius: 3px; vertical-align: middle;" />`;
+                  } else {
+                    replacement = `<span style="background-color: #d4edda; padding: 2px 6px; border-radius: 3px; font-weight: 500; color: #155724; border: 1px solid #c3e6cb;">${value}</span>`;
+                  }
+                  
+                  // Replace: if dollar sign exists, replace $[________], otherwise just [________]
+                  if (targetBlank.hasDollar) {
+                    const beforeDollar = html.substring(0, targetBlank.dollarIndex);
+                    const afterBlank = html.substring(targetBlank.index + targetBlank.match.length);
+                    html = beforeDollar + replacement + afterBlank;
+                    console.log(`[REPLACEMENT] ✓ Replaced "${normalizedKey}" with value (including $) at position ${targetBlank.dollarIndex}`);
+                  } else {
+                    const beforeBlank = html.substring(0, targetBlank.index);
+                    const afterBlank = html.substring(targetBlank.index + targetBlank.match.length);
+                    html = beforeBlank + replacement + afterBlank;
+                    console.log(`[REPLACEMENT] ✓ Replaced "${normalizedKey}" with value at position ${targetBlank.index}`);
+                  }
+                } else {
+                  console.warn(`[REPLACEMENT] ⚠️ Could not find blank for "${normalizedKey}" - unfilledIndex: ${unfilledIndex}, available: ${unfilledBlanks.length}`);
                 }
               } else {
                 // For non-blank placeholders, use the original format matching
@@ -506,154 +532,208 @@ const DocumentPreview = () => {
         console.log('[BLANK_HIGHLIGHT] Key to Original Index:', Array.from(blankKeyToOriginalIndex.entries()).map(([key, idx]) => `${key}→orig#${idx}`).join(', '));
         console.log('[BLANK_HIGHLIGHT] Original Index to Key:', Array.from(originalIndexToPlaceholderKey.entries()).map(([idx, key]) => `orig#${idx}→${key}`).join(', '));
         
-        // IMPORTANT: Collect unfilled blanks from CURRENT HTML (same as replacement logic)
-        // This ensures we get the actual positions in the current HTML state
-        const currentBlankPattern = /\[[_-]{3,}\]/g;
-        const currentBlankMatches = [];
-        let currentBlankMatch;
-        currentBlankPattern.lastIndex = 0;
-        while ((currentBlankMatch = currentBlankPattern.exec(html)) !== null) {
-          const matchIndex = currentBlankMatch.index;
-          const matchText = currentBlankMatch[0];
+        // REWRITTEN: Unified highlighting for blank placeholders ($[________])
+        // Uses the SAME logic as replacement to ensure consistency
+        const findUnfilledBlanksForHighlight = (htmlContent) => {
+          const blankPattern = /\[[_-]{3,}\]/g;
+          const blanks = [];
+          let match;
+          blankPattern.lastIndex = 0;
+          let matchCount = 0;
           
-          // Check if this match hasn't been replaced
-          const checkString = html.substring(
-            Math.max(0, matchIndex - 100),
-            Math.min(html.length, matchIndex + matchText.length + 100)
-          );
-          
-          if (!checkString.includes('background-color: #d4edda') &&
-              !checkString.includes('background-color: #fff3cd') &&
-              !checkString.includes('background-color: #2196f3')) {
-            // This is an unfilled blank - add it
-            currentBlankMatches.push({
-              match: matchText,
-              index: matchIndex,
-              fullMatch: matchText
-            });
+          while ((match = blankPattern.exec(htmlContent)) !== null) {
+            matchCount++;
+            // CRITICAL: Only check for GREEN highlight (filled with value), NOT yellow or blue highlights
+            // Yellow highlights are temporary (unfilled blanks), blue highlights are current question
+            // We need to re-highlight them, so don't skip them
+            const checkArea = htmlContent.substring(
+              Math.max(0, match.index - 100),
+              Math.min(htmlContent.length, match.index + match[0].length + 100)
+            );
+            // Only green (#d4edda) means actually filled with a value
+            // Yellow (#fff3cd) and blue (#2196f3) are just highlights that can change
+            const isFilled = checkArea.includes('background-color: #d4edda');
+            
+            console.log(`[BLANK_HIGHLIGHT] Found blank #${matchCount} at position ${match.index}, isFilled: ${isFilled}`);
+            
+            if (!isFilled) {
+              // Check for dollar sign before this blank (increase search range to catch more cases)
+              let dollarIndex = -1;
+              for (let i = match.index - 1; i >= Math.max(0, match.index - 50); i--) {
+                if (htmlContent[i] === '$') {
+                  const dollarCheck = htmlContent.substring(Math.max(0, i - 50), i + 5);
+                  if (!dollarCheck.includes('background-color')) {
+                    dollarIndex = i;
+                    break;
+                  }
+                }
+              }
+              
+              blanks.push({
+                match: match[0],
+                index: match.index,
+                dollarIndex: dollarIndex,
+                hasDollar: dollarIndex !== -1,
+                originalIndex: blanks.length // Track original order for debugging
+              });
+              
+              console.log(`[BLANK_HIGHLIGHT] Added unfilled blank #${blanks.length} at position ${match.index}, hasDollar: ${dollarIndex !== -1}`);
+            }
           }
-        }
+          
+          const sorted = blanks.sort((a, b) => a.index - b.index);
+          console.log(`[BLANK_HIGHLIGHT] Total blanks found: ${matchCount}, unfilled: ${sorted.length}`);
+          return sorted;
+        };
         
-        // Now map current unfilled blanks to placeholder keys using the SAME logic as replacement
-        // IMPORTANT: This must match the download logic exactly
-        // Build list of unfilled blank placeholder keys in document order (same as download)
-        const unfilledBlankKeys = [];
-        if (placeholders && Array.isArray(placeholders)) {
-          for (let j = 0; j < placeholders.length; j++) {
-            const key = placeholders[j];
-            if (/^blank_\d+$/.test(key)) {
-              const isFilled = filledValues[key] && filledValues[key].trim() !== '';
-              if (!isFilled) {
-                unfilledBlankKeys.push(key);
+        // Get all blank placeholders in document order (same as replacement logic)
+        const allBlanksInOrder = (placeholders || []).filter(p => /^blank_\d+$/.test(p));
+        const unfilledBlanks = findUnfilledBlanksForHighlight(html);
+        
+        console.log(`[BLANK_HIGHLIGHT] Found ${unfilledBlanks.length} unfilled blanks in HTML`);
+        console.log(`[BLANK_HIGHLIGHT] All blank placeholders:`, allBlanksInOrder);
+        
+        // Map each unfilled blank to its placeholder key using the SAME logic as replacement
+        // CRITICAL: Use the EXACT same mapping logic as replacement to ensure consistency
+        const blankToPlaceholderMap = new Map();
+        
+        // Build list of unfilled placeholder keys in document order (same as replacement)
+        const unfilledPlaceholderKeys = [];
+        allBlanksInOrder.forEach(placeholderKey => {
+          const placeholderValue = filledValues[placeholderKey];
+          const isPlaceholderFilled = placeholderValue && placeholderValue.trim() !== '';
+          if (!isPlaceholderFilled) {
+            unfilledPlaceholderKeys.push(placeholderKey);
+          }
+        });
+        
+        console.log(`[BLANK_HIGHLIGHT] Unfilled blanks in HTML: ${unfilledBlanks.length}`);
+        console.log(`[BLANK_HIGHLIGHT] Unfilled placeholder keys:`, unfilledPlaceholderKeys);
+        
+        // Map each blank to its placeholder by index: first blank → first unfilled placeholder
+        // CRITICAL: Ensure ALL blanks get mapped, especially blank_0
+        unfilledBlanks.forEach((blank, blankIndex) => {
+          if (blankIndex < unfilledPlaceholderKeys.length) {
+            const placeholderKey = unfilledPlaceholderKeys[blankIndex];
+            blankToPlaceholderMap.set(blank, placeholderKey);
+            console.log(`[BLANK_HIGHLIGHT] ✓ Mapped HTML blank #${blankIndex} at position ${blank.index} (hasDollar: ${blank.hasDollar}) → placeholder "${placeholderKey}"`);
+          } else {
+            // FALLBACK: If count mismatch, try to map by finding closest placeholder
+            // This ensures blank_0 always gets mapped
+            console.warn(`[BLANK_HIGHLIGHT] ⚠️ Mismatch: blankIndex ${blankIndex} >= ${unfilledPlaceholderKeys.length} unfilled placeholders`);
+            
+            // If this is the first blank (blankIndex 0) and we have at least one unfilled placeholder, map it
+            if (blankIndex === 0 && unfilledPlaceholderKeys.length > 0) {
+              const placeholderKey = unfilledPlaceholderKeys[0];
+              blankToPlaceholderMap.set(blank, placeholderKey);
+              console.warn(`[BLANK_HIGHLIGHT] ⚠️ FALLBACK: Mapped first blank at position ${blank.index} → placeholder "${placeholderKey}"`);
+            } else {
+              console.error(`[BLANK_HIGHLIGHT] ❌ CRITICAL: Could not map HTML blank #${blankIndex} - only ${unfilledPlaceholderKeys.length} unfilled placeholders available`);
+            }
+          }
+        });
+        
+        // CRITICAL: Verify that blank_0 is mapped if it exists and is unfilled
+        if (allBlanksInOrder.length > 0 && allBlanksInOrder[0] === 'blank_0') {
+          const blank0Value = filledValues['blank_0'];
+          const isBlank0Filled = blank0Value && blank0Value.trim() !== '';
+          
+          if (!isBlank0Filled) {
+            // blank_0 should be unfilled, check if it's mapped
+            const blank0Mapped = Array.from(blankToPlaceholderMap.values()).includes('blank_0');
+            if (!blank0Mapped && unfilledBlanks.length > 0) {
+              // Ensure first blank maps to blank_0
+              const firstBlank = unfilledBlanks[0];
+              if (!blankToPlaceholderMap.has(firstBlank)) {
+                blankToPlaceholderMap.set(firstBlank, 'blank_0');
+                console.warn(`[BLANK_HIGHLIGHT] ⚠️ FALLBACK: Force-mapped first blank at position ${firstBlank.index} → blank_0`);
               }
             }
           }
         }
         
-        // CRITICAL FIX: Map current HTML blanks to placeholder keys using the SAME occurrence index logic as download
-        // For each placeholder key, calculate its occurrence index (same as download logic)
-        // Then find the HTML blank at that occurrence index
-        const placeholderKeyToOccurrenceIndex = new Map();
-        // CRITICAL FIX: Calculate occurrence index the SAME way as download
-        // Simply get the index of this blank among ALL blanks in document order
-        const allBlanksInOrder = (placeholders || []).filter(p => /^blank_\d+$/.test(p));
+        // Verify mapping
+        if (unfilledBlanks.length !== unfilledPlaceholderKeys.length) {
+          console.warn(`[BLANK_HIGHLIGHT] ⚠️ Mismatch: ${unfilledBlanks.length} unfilled blanks but ${unfilledPlaceholderKeys.length} unfilled placeholders`);
+        }
         
-        unfilledBlankKeys.forEach(placeholderKey => {
-          // Find this placeholder's index among all blanks (same logic as download)
-          const occurrenceIndex = allBlanksInOrder.indexOf(placeholderKey);
-          
-          if (occurrenceIndex !== -1) {
-            placeholderKeyToOccurrenceIndex.set(placeholderKey, occurrenceIndex);
-            console.log(`[BLANK_HIGHLIGHT] Blank "${placeholderKey}" is at occurrence index ${occurrenceIndex} among all blanks:`, allBlanksInOrder);
-          } else {
-            console.warn(`[BLANK_HIGHLIGHT] ⚠️ Blank "${placeholderKey}" not found in all blanks array`);
-          }
+        // CRITICAL: Log mapping status before highlighting
+        console.log(`[BLANK_HIGHLIGHT] Mapping summary:`);
+        console.log(`[BLANK_HIGHLIGHT] - Total unfilled blanks in HTML: ${unfilledBlanks.length}`);
+        console.log(`[BLANK_HIGHLIGHT] - Total unfilled placeholders: ${unfilledPlaceholderKeys.length}`);
+        console.log(`[BLANK_HIGHLIGHT] - Mapped blanks: ${blankToPlaceholderMap.size}`);
+        blankToPlaceholderMap.forEach((key, blank) => {
+          console.log(`[BLANK_HIGHLIGHT]   - Blank at ${blank.index} → "${key}"`);
         });
+        console.log(`[BLANK_HIGHLIGHT] - Current question: "${currentPlaceholder}"`);
         
-        // Now map HTML blanks to placeholder keys by occurrence index
-        // The HTML blank at occurrence index N maps to the placeholder key that also has occurrence index N
-        const currentBlankToPlaceholderKey = new Map();
-        currentBlankMatches.forEach((currentBlank, htmlIndex) => {
-          // Find the placeholder key that has occurrence index matching this HTML blank's index
-          for (const [placeholderKey, occIndex] of placeholderKeyToOccurrenceIndex.entries()) {
-            if (occIndex === htmlIndex) {
-              currentBlankToPlaceholderKey.set(currentBlank, placeholderKey);
-              console.log(`[BLANK_HIGHLIGHT] Mapped HTML blank #${htmlIndex} (occurrence ${occIndex}) at position ${currentBlank.index} to placeholder key: ${placeholderKey}`);
-              break;
-            }
-          }
-        });
+        // Highlight blanks: process in reverse order to preserve indices
+        // CRITICAL: Process ALL mapped blanks to ensure nothing is skipped, especially blank_0
+        let processedCount = 0;
+        let skippedCount = 0;
         
-        // Now handle highlighting for blank placeholders
-        // Process in reverse order to preserve indices
-        for (let i = currentBlankMatches.length - 1; i >= 0; i--) {
-          const blankMatch = currentBlankMatches[i];
-          const placeholderKey = currentBlankToPlaceholderKey.get(blankMatch);
+        for (let i = unfilledBlanks.length - 1; i >= 0; i--) {
+          const blank = unfilledBlanks[i];
+          const placeholderKey = blankToPlaceholderMap.get(blank);
           
           if (!placeholderKey) {
+            console.warn(`[BLANK_HIGHLIGHT] ⚠️ Skipping blank #${i} at position ${blank.index} - no placeholder key mapped`);
+            skippedCount++;
             continue;
           }
           
           const isCurrentQuestion = currentPlaceholder === placeholderKey;
           const isFilled = filledValues[placeholderKey] && filledValues[placeholderKey].trim() !== '';
           
-          // DEBUG: Log highlighting decision
-          console.log(`[BLANK_HIGHLIGHT] Processing current HTML blank #${i} at position ${blankMatch.index}:`, {
-            placeholderKey,
-            isCurrentQuestion,
-            currentPlaceholder,
-            isFilled
-          });
+          console.log(`[BLANK_HIGHLIGHT] Processing blank #${i}: key="${placeholderKey}", isCurrent=${isCurrentQuestion}, isFilled=${isFilled}, position=${blank.index}`);
           
-          // Skip if already filled
           if (isFilled) {
+            console.log(`[BLANK_HIGHLIGHT] Skipping "${placeholderKey}" - already filled with value: "${filledValues[placeholderKey]}"`);
+            skippedCount++;
             continue;
           }
           
-          const blankIndex = blankMatch.index;
+          // CRITICAL: Always highlight if mapped, even if it's blank_0 and being skipped for some reason
+          processedCount++;
           
-          // Find dollar sign before this blank
-          let dollarIndex = -1;
-          for (let j = blankIndex - 1; j >= Math.max(0, blankIndex - 15); j--) {
-            if (html[j] === '$') {
-              const dollarCheck = html.substring(Math.max(0, j - 50), j + 5);
-              if (!dollarCheck.includes('background-color')) {
-                dollarIndex = j;
-                break;
-              }
-            }
-          }
-          
-          const hasDollarBefore = dollarIndex !== -1;
-          
+          // Create highlight replacement
           let replacement;
           if (isCurrentQuestion) {
-            // Highlight current question with blue background and pulsing animation
-            console.log(`[BLANK_HIGHLIGHT] ✓ HIGHLIGHTING HTML blank #${i} (key="${placeholderKey}") as CURRENT QUESTION at position ${blankIndex}${hasDollarBefore ? ' with $' : ''}`);
-            if (hasDollarBefore) {
-              // Replace both dollar sign and placeholder together
-              const beforeDollar = html.substring(0, dollarIndex);
-              const afterBlank = html.substring(blankIndex + blankMatch.match.length);
-              replacement = `<span id="current-question-highlight" style="background-color: #2196f3; padding: 4px 8px; border-radius: 4px; border: 2px solid #1976d2; color: #fff; font-weight: bold; animation: pulse 2s infinite;">$${blankMatch.match}</span>`;
-              html = beforeDollar + replacement + afterBlank;
-            } else {
-              // Just highlight the placeholder
-              replacement = `<span id="current-question-highlight" style="background-color: #2196f3; padding: 4px 8px; border-radius: 4px; border: 2px solid #1976d2; color: #fff; font-weight: bold; animation: pulse 2s infinite;">${blankMatch.match}</span>`;
-              html = html.substring(0, blankIndex) + replacement + html.substring(blankIndex + blankMatch.match.length);
-            }
+            // Blue highlight for current question
+            replacement = blank.hasDollar
+              ? `<span id="current-question-highlight" style="background-color: #2196f3; padding: 4px 8px; border-radius: 4px; border: 2px solid #1976d2; color: #fff; font-weight: bold; animation: pulse 2s infinite;">$${blank.match}</span>`
+              : `<span id="current-question-highlight" style="background-color: #2196f3; padding: 4px 8px; border-radius: 4px; border: 2px solid #1976d2; color: #fff; font-weight: bold; animation: pulse 2s infinite;">${blank.match}</span>`;
           } else {
-            // Highlight unfilled blank placeholders in yellow (don't log these to reduce noise)
-            if (hasDollarBefore) {
-              // Replace both dollar sign and placeholder together
-              const beforeDollar = html.substring(0, dollarIndex);
-              const afterBlank = html.substring(blankIndex + blankMatch.match.length);
-              replacement = `<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; border: 1px dashed #ffc107; color: #856404; font-style: italic; font-weight: 500;">$${blankMatch.match}</span>`;
-              html = beforeDollar + replacement + afterBlank;
-            } else {
-              // Just highlight the placeholder
-              replacement = `<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; border: 1px dashed #ffc107; color: #856404; font-style: italic; font-weight: 500;">${blankMatch.match}</span>`;
-              html = html.substring(0, blankIndex) + replacement + html.substring(blankIndex + blankMatch.match.length);
-            }
+            // Yellow highlight for other unfilled blanks
+            replacement = blank.hasDollar
+              ? `<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; border: 1px dashed #ffc107; color: #856404; font-style: italic; font-weight: 500;">$${blank.match}</span>`
+              : `<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; border: 1px dashed #ffc107; color: #856404; font-style: italic; font-weight: 500;">${blank.match}</span>`;
+          }
+          
+          // Replace in HTML
+          if (blank.hasDollar) {
+            const beforeDollar = html.substring(0, blank.dollarIndex);
+            const afterBlank = html.substring(blank.index + blank.match.length);
+            html = beforeDollar + replacement + afterBlank;
+            console.log(`[BLANK_HIGHLIGHT] ✓ Highlighted "${placeholderKey}" (with $) at position ${blank.dollarIndex}, isCurrent: ${isCurrentQuestion}`);
+          } else {
+            const beforeBlank = html.substring(0, blank.index);
+            const afterBlank = html.substring(blank.index + blank.match.length);
+            html = beforeBlank + replacement + afterBlank;
+            console.log(`[BLANK_HIGHLIGHT] ✓ Highlighted "${placeholderKey}" at position ${blank.index}, isCurrent: ${isCurrentQuestion}`);
+          }
+        }
+        
+        // Final summary log
+        console.log(`[BLANK_HIGHLIGHT] Summary: Processed ${processedCount} blanks, skipped ${skippedCount} blanks`);
+        
+        // CRITICAL: If blank_0 is the current question and wasn't processed, log error
+        if (currentPlaceholder === 'blank_0') {
+          const blank0Processed = processedCount > 0 && Array.from(blankToPlaceholderMap.values()).some(key => key === 'blank_0');
+          if (!blank0Processed) {
+            console.error(`[BLANK_HIGHLIGHT] ❌ CRITICAL ERROR: blank_0 is current question but was NOT highlighted!`);
+            console.error(`[BLANK_HIGHLIGHT] - unfilledBlanks: ${unfilledBlanks.length}, blankToPlaceholderMap: ${blankToPlaceholderMap.size}`);
+            console.error(`[BLANK_HIGHLIGHT] - blank_0 mapped: ${Array.from(blankToPlaceholderMap.values()).includes('blank_0')}`);
           }
         }
         

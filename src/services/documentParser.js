@@ -170,7 +170,8 @@ export const parseDocument = async (file) => {
         let blankIndex = 0;
         
         // Find which occurrence this blank corresponds to
-        const blankNumber = parseInt(placeholderKey.match(/\d+$/)[0]);
+        const digitMatch = placeholderKey.match(/\d+$/);
+        const blankNumber = digitMatch ? parseInt(digitMatch[0]) : 0;
         let currentBlankIndex = 0;
         
         while ((match = blankPattern.exec(text)) !== null) {
@@ -378,7 +379,8 @@ export const parseDocument = async (file) => {
           label = 'Company Name';
         } else {
           // Fallback: Use position number but with better wording
-          label = `Field ${placeholderKey.match(/\d+$/)[0]}`;
+          const match = placeholderKey.match(/\d+$/);
+          label = match ? `Field ${match[0]}` : 'Field';
         }
         
         return {
