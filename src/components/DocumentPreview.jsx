@@ -743,57 +743,13 @@ const DocumentPreview = () => {
         // Skip highlighting implicit placeholders - only highlight explicit [placeholder] placeholders
         // All placeholders should be in bracket format and already handled above
 
-        // Remove investor section placeholders and [needs value] placeholders from preview
-        // Remove everything from "INVESTOR:" onwards that contains placeholders
-        const htmlLower = html.toLowerCase();
-        const investorIndex = htmlLower.indexOf('investor:');
+        // Note: Investor section is now kept visible so users can see and fill investor fields
+        // Previously, investor section was removed from preview, but now it's displayed
         
-        if (investorIndex !== -1) {
-          // Find the investor section start
-          let sectionStart = investorIndex;
-          
-          // Look backwards to find the start of the paragraph/div containing INVESTOR:
-          for (let i = investorIndex - 1; i >= Math.max(0, investorIndex - 300); i--) {
-            if (html.substring(i, i + 4) === '<p>' || 
-                html.substring(i, i + 5) === '<div' ||
-                (html[i] === '>' && html.substring(Math.max(0, i - 10), i).includes('<p'))) {
-              let tagStart = i;
-              while (tagStart > 0 && html[tagStart] !== '<') {
-                tagStart--;
-              }
-              if (html[tagStart] === '<') {
-                sectionStart = tagStart;
-                break;
-              }
-            }
-          }
-          
-          // Remove everything from the investor section onwards
-          html = html.substring(0, sectionStart);
-          
-          // Clean up any trailing whitespace or incomplete HTML
-          html = html.trim();
-          
-          // Remove incomplete tags at the end
-          let lastOpenTag = html.lastIndexOf('<');
-          let lastCloseTag = html.lastIndexOf('>');
-          
-          // If there's an open tag without a closing bracket, remove it
-          if (lastOpenTag > lastCloseTag) {
-            html = html.substring(0, lastOpenTag);
-          }
-          
-          // Remove any trailing incomplete tags
-          html = html.replace(/<[^>]*$/, '');
-          html = html.trim();
-        }
-        
-        // Also remove any remaining placeholder patterns like [needs value] or [________]
-        // These are the yellow highlighted placeholders that weren't filled
+        // Remove any remaining placeholder patterns like [needs value] only if they're not part of valid placeholders
+        // Keep [________] placeholders as they may be actual fields that need to be filled
         html = html.replace(/<span[^>]*>\[needs value\]<\/span>/gi, '');
         html = html.replace(/\[needs value\]/gi, '');
-        html = html.replace(/\[________\]/gi, '');
-        html = html.replace(/\[_+\]/g, '');
         
         setPreviewHtml(html);
         
